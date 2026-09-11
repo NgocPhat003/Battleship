@@ -1,0 +1,164 @@
+import './styles.css';
+import { renderBoard } from './ui/DOM.js';
+import { initSetupScreen } from './ui/setup.js';
+import { audio } from './audio/audio.js';
+
+// Screen elements
+const screenHome   = document.getElementById('screen-home');
+const screenSetup  = document.getElementById('screen-setup');
+const screenGame   = document.getElementById('screen-game');
+const playBtn      = document.getElementById('play-btn');
+
+// Game-screen elements
+const humanBoardEl    = document.getElementById('human-board');
+const computerBoardEl = document.getElementById('computer-board');
+const turnIndicator  = document.getElementById('turn-indicator');
+const restartBtn     = document.getElementById('restart-btn');
+const modal          = document.getElementById('game-over-modal');
+const resultTitle    = document.getElementById('result-title');
+const resultMessage  = document.getElementById('result-message');
+const modalRestartBtn = document.getElementById('modal-restart-btn');
+
+let game;
+let setup = null;
+// A shot the player attempted while the computer was taking its turn; it is
+// delivered once the player's turn starts so no click is ever silently lost.
+let pendingShot = null;
+
+// ── screen routing ──────────────────────────────────────────────
+function showScreen(target) {
+  [screenHome, screenSetup, screenGame].forEach(s => s.classList.add('hidden'));
+  target.classList.remove('hidden');
+}
+
+function openSetup() {
+  showScreen(screenSetup);
+  if (!setup) {
+    setup = initSetupScreen({ startEl: document.getElementById('start-game-btn'), onStart: startGameFromSetup });
+  }
+}
+
+// ── board helpers ───────────────────────────────────────────────
+function refreshBoards() {
+  renderBoard(humanBoardEl, game.humanBoard, { enemy: false, revealed: true });
+  renderBoard(computerBoardEl, game.computerBoard, { enemy: true, revealed: false });
+}
+
+function updateTurnIndicator() {
+  if (game.isOver()) return;
+  turnIndicator.textContent =
+    game.currentPlayer === 'human'
+      ? 'Your turn. Fire at the enemy waters!'
+      : 'Enemy is firing...';
+}
+
+// ── modal ───────────────────────────────────────────────────────
+function showModal(title, message) {
+  resultTitle.textContent = title;
+  resultMessage.textContent = message;
+  modal.classList.remove('hidden');
+}
+
+// ── computer turn ───────────────────────────────────────────────
+function handleComputerTurn() {
+  if (game.isOver()) { endGame(); return; }
+  turnIndicator.textContent = 'Enemy is firing...';
+  setTimeout(() => {
+    game.computerAttack();
+    refreshBoards();
+    if (game.isOver()) { endGame(); return; }
+    updateTurnIndicator();
+    // Deliver any shot the player queued while the enemy was thinking, so no
+    // click is silently dropped.
+    deliverPendingShot();
+  }, 400);
+}
+
+// ── human attack ────────────────────────────────────────────────
+function tryHumanAttack(row, col) {
+  if (game.isOver() || game.currentPlayer !== 'human') return;
+  if (game.computerBoard.shots.has(`${row},${col}`)) return;
+
+  audio.playSfx('fire');
+  const result = game.humanAttack(row, col);
+  audio.playSfx(result === 'hit' ? 'hit' : 'miss');
+  refreshBoards();
+
+  if (game.isOver()) endGame();
+  else handleComputerTurn();
+}
+
+function handleCellClick(event) {
+  if (game.isOver()) return;
+  if (!event.target.classList.contains('enemy')) return;
+  const row = Number(event.target.dataset.row);
+  const col = Number(event.target.dataset.col);
+
+  if (game.currentPlayer !== 'human') {
+    // Queue the shot for the start of the player's next turn. The first queued
+    // cell wins; later clicks are ignored until it is delivered.
+    if (!pendingShot) pendingShot = { row, col };
+    return;
+  }
+  tryHumanAttack(row, col);
+}
+
+function deliverPendingShot() {
+  if (!pendingShot) return;
+  const { row, col } = pendingShot;
+  pendingShot = null;
+  tryHumanAttack(row, col);
+}
+
+// ── end of game ─────────────────────────────────────────────────
+function endGame() {
+  audio.stopMusic();
+  // Reveal both fleets so it is clear each side had the same five ships.
+  renderBoard(humanBoardEl, game.humanBoard, { enemy: false, revealed: true });
+  renderBoard(computerBoardEl, game.computerBoard, { enemy: true, revealed: true });
+  if (game.winner === 'human') {
+    showModal('Victory!', 'You sank the entire enemy fleet.');
+  } else if (game.winner === 'computer') {
+    showModal('Defeat', 'The enemy sank your fleet.');
+  } else {
+    showModal('Game Over', 'The battle has ended.');
+  }
+}
+
+// ── start / restart ─────────────────────────────────────────────
+function beginBattle() {
+  pendingShot = null;
+  game.resetAI();
+  game.placeComputerFleet();
+  audio.playMusic('battle');
+  modal.classList.add('hidden');
+  refreshBoards();
+  updateTurnIndicator();
+}
+
+function startGameFromSetup(g) {
+  game = g;
+  showScreen(screenGame);
+  beginBattle();
+}
+
+// ── event wiring ────────────────────────────────────────────────
+playBtn.addEventListener('click', openSetup);
+
+computerBoardEl.addEventListener('click', handleCellClick);
+restartBtn.addEventListener('click', () => {
+  audio.stopMusic();
+  showScreen(screenHome);
+  audio.playMusic('menu');
+});
+// After a game ends, return to setup to arrange a fresh fleet
+modalRestartBtn.addEventListener('click', () => {
+  audio.stopMusic();
+  if (setup) setup.reset();
+  openSetup();
+});
+
+// ── boot ────────────────────────────────────────────────────────
+showScreen(screenHome);
+audio.playMusic('menu');
+
