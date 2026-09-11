@@ -7,7 +7,7 @@ module.exports = (env, argv) => ({
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: '[name].[contenthash].js',  // cache-busting
-    publicPath: '/battleship/',  // serve from the GitHub Pages project subpath
+    publicPath: "auto",  // serve from the GitHub Pages project subpath
     clean: true,
   },
   devServer: {
@@ -29,4 +29,4 @@ module.exports = (env, argv) => ({
     ],
   },
   mode: argv.mode || 'development',
-});
+})
