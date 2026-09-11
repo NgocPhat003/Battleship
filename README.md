@@ -1,6 +1,6 @@
-# ⚓ Battleship
+# About
 
-A classic **Battleship** duel against a smart computer opponent, built as a fast, dependency-light browser game with custom ship sprites, sound effects, and background music.
+Battleship game against a computer opponent.
 
 > **Try it live:** [**https://ngocphat003.github.io/Battleship/**](https://ngocphat003.github.io/Battleship/)
 
